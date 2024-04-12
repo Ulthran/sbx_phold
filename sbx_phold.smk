@@ -1,4 +1,4 @@
-def get_template_path() -> Path:
+def get_phold_path() -> Path:
     for fp in sys.path:
         if fp.split("/")[-1] == "sbx_phold":
             return Path(fp)
@@ -7,7 +7,7 @@ def get_template_path() -> Path:
     )
 
 
-SBX_TEMPLATE_VERSION = open(get_template_path() / "VERSION").read().strip()
+SBX_PHOLD_VERSION = open(get_phold_path() / "VERSION").read().strip()
 
 try:
     BENCHMARK_FP
@@ -23,44 +23,53 @@ localrules:
     all_template,
 
 
-rule all_template:
+rule all_phold:
     input:
-        QC_FP / "mush" / "big_file.txt",
+        expand(
+            VIRUS_FP / "phold" / "{sample}" / "phold.gbk",
+            sample=Samples.keys()
+        )
 
 
-rule example_rule:
-    """Takes in cleaned .fastq.gz and mushes them all together into a file"""
-    input:
-        expand(QC_FP / "cleaned" / "{sample}_{rp}.fastq.gz", sample=Samples, rp=Pairs),
+rule install_phold_database:
     output:
-        QC_FP / "mush" / "big_file1.txt",
-    log:
-        LOG_FP / "example_rule.log",
-    benchmark:
-        BENCHMARK_FP / "example_rule.tsv"
-    params:
-        opts=Cfg["sbx_phold"]["example_rule_options"],
+        db=Cfg["sbx_phold"]["phold_db"]
     conda:
         "envs/sbx_phold_env.yml"
     container:
-        f"docker://sunbeamlabs/sbx_phold:{SBX_TEMPLATE_VERSION}"
+        "docker://sunbeamlabs/sbx_phold"
     shell:
-        "cat {params.opts} {input} >> {output} 2> {log}"
+        """
+        phold install --database {output.db}
+        """
 
 
-rule example_with_script:
-    """Take in big_file1 and then ignore it and write the results of `samtools --help` to the output using a python script"""
+rule phold_predict:
     input:
-        QC_FP / "mush" / "big_file1.txt",
+        contigs=ASSEMBLY_FP / "megahit" / "{sample}_asm" / "final.contigs.fa",
+        db=rules.install_phold_database.output.db
     output:
-        QC_FP / "mush" / "big_file.txt",
-    log:
-        LOG_FP / "example_with_script.log",
-    benchmark:
-        BENCHMARK_FP / "example_with_script.tsv"
+        cds=VIRUS_FP / "phold" / "{sample}" / "phold_per_cds_predictions.tsv",
     conda:
         "envs/sbx_phold_env.yml"
     container:
-        f"docker://sunbeamlabs/sbx_phold:{SBX_TEMPLATE_VERSION}"
-    script:
-        "scripts/example_with_script.py"
+        "docker://sunbeamlabs/sbx_phold"
+    shell:
+        """
+        phold predict -i {input.contigs} -o $(dirname {output.cds}) --database {input.db} --cpu --force
+        """
+
+rule phold_compare:
+    input:
+        contigs=ASSEMBLY_FP / "megahit" / "{sample}_asm" / "final.contigs.fa",
+        cds=VIRUS_FP / "phold" / "{sample}" / "phold_per_cds_predictions.tsv",
+    output:
+        gbk=VIRUS_FP / "phold" / "{sample}" / "phold.gbk",
+    conda:
+        "envs/sbx_phold_env.yml"
+    container:
+        "docker://sunbeamlabs/sbx_phold"
+    shell:
+        """
+        phold compare -i {input.contigs} --predictions_dir $(dirname {input.cds}) -o $(dirname {output.gbk}) -t 8
+        """
