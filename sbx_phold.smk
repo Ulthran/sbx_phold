@@ -25,45 +25,53 @@ localrules:
 
 rule all_phold:
     input:
-        expand(VIRUS_FP / "phold" / "{sample}" / "phold.gbk", sample=Samples.keys()),
-        expand(VIRUS_FP / "phold" / "{sample}" / "plots", sample=Samples.keys()),
+        expand(
+            VIRUS_FP / "phold" / "{sample}_compare" / "phold.gbk",
+            sample=Samples.keys(),
+        ),
+        #expand(VIRUS_FP / "phold" / "{sample}_plot" / "{sample}.png", sample=Samples.keys()),
 
 
 rule install_phold_database:
     output:
-        db=Cfg["sbx_phold"]["phold_db"],
+        annotations=Path(Cfg["sbx_phold"]["phold_db"]) / "phold_annots.tsv",
     conda:
         "envs/sbx_phold_env.yml"
     container:
         "docker://sunbeamlabs/sbx_phold"
     shell:
         """
-        phold install --database {output.db}
+        phold install --database $(dirname {output.annotations})
         """
 
 
 rule phold_predict:
     input:
         contigs=ASSEMBLY_FP / "megahit" / "{sample}_asm" / "final.contigs.fa",
-        db=rules.install_phold_database.output.db,
+        annotations=Path(Cfg["sbx_phold"]["phold_db"]) / "phold_annots.tsv",
     output:
-        cds=VIRUS_FP / "phold" / "{sample}" / "phold_per_cds_predictions.tsv",
+        _3di=VIRUS_FP / "phold" / "{sample}_predict" / "phold_3di.fasta",
     conda:
         "envs/sbx_phold_env.yml"
     container:
         "docker://sunbeamlabs/sbx_phold"
     shell:
         """
-        phold predict -i {input.contigs} -o $(dirname {output.cds}) --database {input.db} --cpu --force
+        if [ ! -s {input.contigs} ]; then
+            touch {output._3di}
+        else
+            phold predict -i {input.contigs} -o $(dirname {output._3di}) --database $(dirname {input.annotations}) --cpu --force
+        fi
         """
 
 
 rule phold_compare:
     input:
         contigs=ASSEMBLY_FP / "megahit" / "{sample}_asm" / "final.contigs.fa",
-        cds=VIRUS_FP / "phold" / "{sample}" / "phold_per_cds_predictions.tsv",
+        _3di=VIRUS_FP / "phold" / "{sample}_predict" / "phold_3di.fasta",
+        annotations=Path(Cfg["sbx_phold"]["phold_db"]) / "phold_annots.tsv",
     output:
-        gbk=VIRUS_FP / "phold" / "{sample}" / "phold.gbk",
+        gbk=VIRUS_FP / "phold" / "{sample}_compare" / "phold.gbk",
     conda:
         "envs/sbx_phold_env.yml"
     container:
@@ -71,20 +79,28 @@ rule phold_compare:
     threads: 8
     shell:
         """
-        phold compare -i {input.contigs} --predictions_dir $(dirname {input.cds}) -o $(dirname {output.gbk}) -t 8
+        if [ ! -s {input._3di} ]; then
+            touch {output.gbk}
+        else
+            phold compare -i {input.contigs} --predictions_dir $(dirname {input._3di}) -o $(dirname {output.gbk}) --database $(dirname {input.annotations}) -t 8 --force
+        fi
         """
 
 
 rule phold_plot:
     input:
-        gbk=VIRUS_FP / "phold" / "{sample}" / "phold.gbk",
+        gbk=VIRUS_FP / "phold" / "{sample}_compare" / "phold.gbk",
     output:
-        out_dir=dir(VIRUS_FP / "phold" / "{sample}" / "plots"),
+        png=VIRUS_FP / "phold" / "{sample}_plot" / "{sample}.png",
     conda:
         "envs/sbx_phold_env.yml"
     container:
         "docker://sunbeamlabs/sbx_phold"
     shell:
         """
-        phold plot -i tests/test_data/NC_043029_phold_output.gbk  -o {output.out_dir} -t "{sample}"
+        if [ ! -s {input.gbk} ]; then
+            touch {output.png}
+        else
+            phold plot -i {input.gbk} -o $(dirname {output.png}) --force
+        fi
         """
