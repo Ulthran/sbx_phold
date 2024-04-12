@@ -25,15 +25,13 @@ localrules:
 
 rule all_phold:
     input:
-        expand(
-            VIRUS_FP / "phold" / "{sample}" / "phold.gbk",
-            sample=Samples.keys()
-        )
+        expand(VIRUS_FP / "phold" / "{sample}" / "phold.gbk", sample=Samples.keys()),
+        expand(VIRUS_FP / "phold" / "{sample}" / "plots", sample=Samples.keys()),
 
 
 rule install_phold_database:
     output:
-        db=Cfg["sbx_phold"]["phold_db"]
+        db=Cfg["sbx_phold"]["phold_db"],
     conda:
         "envs/sbx_phold_env.yml"
     container:
@@ -47,7 +45,7 @@ rule install_phold_database:
 rule phold_predict:
     input:
         contigs=ASSEMBLY_FP / "megahit" / "{sample}_asm" / "final.contigs.fa",
-        db=rules.install_phold_database.output.db
+        db=rules.install_phold_database.output.db,
     output:
         cds=VIRUS_FP / "phold" / "{sample}" / "phold_per_cds_predictions.tsv",
     conda:
@@ -59,6 +57,7 @@ rule phold_predict:
         phold predict -i {input.contigs} -o $(dirname {output.cds}) --database {input.db} --cpu --force
         """
 
+
 rule phold_compare:
     input:
         contigs=ASSEMBLY_FP / "megahit" / "{sample}_asm" / "final.contigs.fa",
@@ -69,7 +68,23 @@ rule phold_compare:
         "envs/sbx_phold_env.yml"
     container:
         "docker://sunbeamlabs/sbx_phold"
+    threads: 8
     shell:
         """
         phold compare -i {input.contigs} --predictions_dir $(dirname {input.cds}) -o $(dirname {output.gbk}) -t 8
+        """
+
+
+rule phold_plot:
+    input:
+        gbk=VIRUS_FP / "phold" / "{sample}" / "phold.gbk",
+    output:
+        out_dir=dir(VIRUS_FP / "phold" / "{sample}" / "plots"),
+    conda:
+        "envs/sbx_phold_env.yml"
+    container:
+        "docker://sunbeamlabs/sbx_phold"
+    shell:
+        """
+        phold plot -i tests/test_data/NC_043029_phold_output.gbk  -o {output.out_dir} -t "{sample}"
         """
