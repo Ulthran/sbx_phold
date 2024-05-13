@@ -27,11 +27,11 @@ Installation instructions for older versions of Sunbeam are included at the end 
 
 To run an extension, simply run Sunbeam as usual with your extension's target rule specified:
 
-    sunbeam run --profile /path/to/project/ example_rule
+    sunbeam run --profile /path/to/project/ all_phold
 
 ### Options for config.yml
 
-  - example_rule_options: Example rule options description
+  - phold_db: Path to phold db
     
 ## Installing an extension (legacy instructions for sunbeam <3.0)
 
