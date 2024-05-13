@@ -20,7 +20,7 @@ except NameError:
 
 
 localrules:
-    all_template,
+    all_phold,
 
 
 rule all_phold:
